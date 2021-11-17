@@ -1,109 +1,117 @@
 #include <iostream>
 #include <string>
+#include <vector>
+
 #include <libudev.h>
 
 
-void find(uint16_t vid, uint16_t pid)
+void find(uint16_t vid, uint16_t pid, const char *dev_class, std::vector<std::string> &out_dev_ifce_nodes)
 {
-	std::cout << std::endl;
 	struct udev *udev_ctx = udev_new();
 
 	struct udev_enumerate *enumerate = udev_enumerate_new(udev_ctx);
 	int res;
-	res = udev_enumerate_add_match_subsystem(enumerate, "usb");
-	std::cout <<"res enumerate add filter: "<< res <<std::endl;
+	res = udev_enumerate_add_match_subsystem(enumerate, dev_class);
+	//std::cout <<"res enumerate add filter: "<< res <<std::endl;
 	res = udev_enumerate_scan_devices(enumerate);
-	std::cout <<"res scan: "<< res <<std::endl;
+	//std::cout <<"res scan: "<< res <<std::endl<<std::endl;
 
-	struct udev_list_entry *dev_list = udev_enumerate_get_list_entry(enumerate);
-	struct udev_list_entry *dev_it = nullptr;
+	struct udev_list_entry *usb_dev_ifce_list = udev_enumerate_get_list_entry(enumerate);
+	struct udev_list_entry *ifce_it = nullptr;
 	
-	udev_list_entry_foreach(dev_it, dev_list) {
+	udev_list_entry_foreach(ifce_it, usb_dev_ifce_list)
+	{
+		bool pid_ok = false;
+		bool vid_ok = false;
+		//ifce:
+		struct udev_device *ifce_dev = udev_device_new_from_syspath(udev_ctx, udev_list_entry_get_name(ifce_it));
 
-		struct udev_device *device = udev_device_new_from_syspath(udev_ctx, udev_list_entry_get_name(dev_it));
-
-		 if (device != nullptr) {
-			const char *vendor_id = udev_device_get_sysattr_value(device, "idVendor");
-			const char *product_id;
-
-			if (vendor_id)
+		 if (ifce_dev != nullptr)
+		 {
+			//the usb device:
+			struct udev_device *device = udev_device_get_parent_with_subsystem_devtype(ifce_dev, "usb", "usb_device");
+			if (device != nullptr)
 			{
-				std::string vid_str(vendor_id);
-				uint16_t vid_tmp = (uint16_t)std::stoi(vid_str, nullptr, 16);
+				const char *vendor_id = udev_device_get_sysattr_value(device, "idVendor");
+				const char *product_id;
 
-				if(vid_tmp == vid)
+				if (vendor_id)
 				{
+					std::string vid_str(vendor_id);
+					uint16_t vid_tmp = (uint16_t)std::stoi(vid_str, nullptr, 16);
+					vid_ok = (vid_tmp == vid);
+
 					product_id = udev_device_get_sysattr_value(device, "idProduct");
 					if (product_id)
 					{
 						std::string pid_str(product_id);
 						uint16_t pid_tmp = (uint16_t)std::stoi(pid_str, nullptr, 16);
-						if (pid_tmp != pid)
-							continue;
-					} else continue;
-				} else continue;
-
-			} else continue;
-
-			if (vendor_id = udev_device_get_sysattr_value(device, "idVendor")) {
-				std::cout<<"device vendor: " << vendor_id << std::endl;
-			} else {
-				std::cout<<"device vendor: none" << std::endl;
-			}
-
-			if (product_id = udev_device_get_sysattr_value(device, "idProduct")) {
-				std::cout<<"device pid: " << product_id << std::endl;
-			} else {
-				std::cout<<"device pid: none" << std::endl;
-			}
-
-			if(const char *dev_node = udev_device_get_devnode(device)){
-				std::cout<<"dev_node: " << dev_node << std::endl;
-			} else {
-				std::cout<<"dev_node: none" << std::endl;
-			}
-
-			if(const char *action = udev_device_get_action(device)) {
-				std::cout<<"dev_action: " << action << std::endl;
-			} else {
-				std::cout<<"dev_action: none" << std::endl;
-			}
-
-			if (const char *subsystem = udev_device_get_subsystem(device)) {
-				std::cout<<"device subsystem: " << subsystem << std::endl;
-			} else {
-				std::cout<<"device subsystem: none" << std::endl;
-			}
-
-			if (const char *dev_type = udev_device_get_devtype(device)) {
-				std::cout<<"device type: " << dev_type << std::endl;
-			} else {
-				std::cout<<"device type: none" << std::endl;
-			}
-
-			if (const char *dev_path = udev_device_get_devpath(device)) {
-				std::cout<<"dev_path: " << dev_path << std::endl;
-			} else {
-				std::cout<<"dev_path: none" << std::endl;
-			}
-
-			if (const char *sys_path = udev_device_get_syspath(device)) {
-				std::cout<<"sys_path: " << sys_path << std::endl;
-			} else {
-				std::cout<<"sys_path: none" << std::endl;
-			}
-
-			std::cout <<std::endl;
-
-			udev_device_unref(device);
-		}
+						pid_ok = (pid_tmp == pid);
+					}
+				}
 		
-	}
-	
+				if (pid_ok && vid_ok)
+				{
+					const char *ifce_dev_node = nullptr;
+
+					if((ifce_dev_node = udev_device_get_devnode(ifce_dev)))
+					{
+						std::cout<<"ifce node: " << ifce_dev_node << std::endl;
+						out_dev_ifce_nodes.push_back(std::string(ifce_dev_node));
+					}
+
+					if ((vendor_id = udev_device_get_sysattr_value(device, "idVendor")))
+					{
+						std::cout<<"device vendor: " << vendor_id << std::endl;
+					}
+
+					if ((product_id = udev_device_get_sysattr_value(device, "idProduct")))
+					{
+						std::cout<<"device pid: " << product_id << std::endl;
+					}
+
+					const char *usb_dev_node = udev_device_get_devnode(device);
+					if(usb_dev_node)
+					{
+						std::cout<<"usb dev_node: " << usb_dev_node << std::endl;
+					}
+
+					const char *action = udev_device_get_action(device);
+					if(action) {
+						std::cout<<"dev_action: " << action << std::endl;
+					}
+
+					const char *subsystem = udev_device_get_subsystem(device);
+					if (subsystem) {
+						std::cout<<"device subsystem: " << subsystem << std::endl;
+					}
+
+					const char *dev_type = udev_device_get_devtype(device);
+					if (dev_type) {
+						std::cout<<"device type: " << dev_type << std::endl;
+					}
+
+					const char *dev_path = udev_device_get_devpath(device);
+					if (dev_path) {
+						std::cout<<"dev_path: " << dev_path << std::endl;
+					}
+
+					const char *sys_path = udev_device_get_syspath(device);
+					if (sys_path) {
+						std::cout<<"sys_path: " << sys_path << std::endl;
+					}
+
+				}
+
+				udev_device_unref(device);
+			}//if (device != nullptr)
+			
+		} //if (ifce_dev != nullptr)
+
+	} //loop-end
+
 	std::cout <<std::endl;
-	
 	udev_enumerate_unref(enumerate);
-	
 	udev_unref(udev_ctx);
 }
 
@@ -112,6 +120,15 @@ int main()
 	//choose
 	const uint16_t vid = 0x09da;
 	const uint16_t pid = 0x3597;
-	find(vid, pid);
+	const char *dev_class = "input";
+	std::vector<std::string> out_dev_ifce_nodes;
+
+	find(vid, pid, dev_class, out_dev_ifce_nodes);
+
+	std::cout<<std::endl<<"Found:"<<std::endl;
+	for (auto &n:out_dev_ifce_nodes)
+		std::cout<<n<<std::endl;
+	std::cout<<std::endl;
+
 	return 0;
 }
